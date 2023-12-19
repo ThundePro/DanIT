@@ -1,0 +1,11 @@
+[Unit]
+Description=For package
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/10_task.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
