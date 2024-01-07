@@ -1,0 +1,6 @@
+Package: neshcheretpkg
+Version: 1.0
+Maintainer: Volodymyr Neshcheret
+Architecture: all
+Description: Write time for test work
+Depends: systemd
