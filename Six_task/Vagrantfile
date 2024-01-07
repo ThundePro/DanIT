@@ -1,0 +1,105 @@
+Vagrant.configure("2") do |config|
+
+  config.vm.define "prometheusExporter" do |prometheusExporter|
+  prometheusExporter.vm.box = "bento/ubuntu-22.04"
+  prometheusExporter.vm.hostname = "prometheusExporter"
+
+  config.vm.network "public_network"
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 2
+  end
+
+  prometheusExporter.vm.provision "shell", inline: <<-SHELL
+    echo start prometheusExporter
+    apt-get update
+    apt install net-tools
+    wget https://github.com/prometheus/prometheus/releases/download/v2.37.6/prometheus-2.37.6.linux-amd64.tar.gz
+    tar xvfz prometheus-*.tar.gz
+    mkdir /etc/prometheus /var/lib/prometheus
+    cd prometheus-2.37.6.linux-amd64
+    mv prometheus promtool /usr/local/bin/
+    mv prometheus.yml consoles/ console_libraries/ /etc/prometheus/
+    cd ~
+    rm -rf prometheus*
+    useradd -rs /bin/false prometheus
+    chown -R prometheus: /etc/prometheus /var/lib/prometheus
+    echo -e "
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+    
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries \
+    --web.listen-address=0.0.0.0:9090 \
+    --web.enable-lifecycle \
+    --log.level=info
+      
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/prometheus.service
+    systemctl daemon-reload
+    systemctl start prometheus
+    # install node_exporter
+    wget https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz
+    tar xvfz node_exporter-*.tar.gz
+    mv node_exporter-1.5.0.linux-amd64/node_exporter /usr/local/bin
+    rm -r node_exporter-1.5.0.linux-amd64*
+    useradd -rs /bin/false node_exporter
+    echo -e "
+[Unit]
+Wants=network-online.target
+Description=Node Exporter
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/node_exporter
+    
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/node_exporter.service
+    sudo systemctl daemon-reload
+    sudo systemctl start node_exporter
+    echo -e "
+  - job_name: "node_exporter"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["localhost:9100"]" >> /etc/prometheus/prometheus.yml
+    sudo systemctl restart prometheus
+  SHELL
+  end
+
+  config.vm.define "grafana" do |grafana|
+  grafana.vm.box = "bento/ubuntu-22.04"
+  grafana.vm.hostname = "grafana"
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 2
+  end
+  grafana.vm.provision "shell", inline: <<-SHELL 
+    echo start grafana
+    apt-get install -y apt-transport-https software-properties-common
+    sudo wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
+    echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+    sudo apt-get update
+    sudo apt-get install -y grafana
+    sudo systemctl daemon-reload
+    sudo systemctl enable grafana-server.service
+    sudo systemctl start grafana-server
+    sudo systemctl status grafana-server
+  SHELL
+  end
+end
