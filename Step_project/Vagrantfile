@@ -20,14 +20,14 @@ Vagrant.configure("2") do |config|
 CREATE DATABASE Shop;
 USE Shop;
 CREATE TABLE Product(id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), price INT, count INT);
-INSERT INTO Shop (name, price, count) VALUE ("Chery",549,152);
-INSERT INTO Shop (name, price, count) VALUE ("Banan",325,753);
-INSERT INTO Shop (name, price, count) VALUE ("Orange",436,652);
-INSERT INTO Shop (name, price, count) VALUE ("Apple",542,612);
-INSERT INTO Shop (name, price, count) VALUE ("Grape",634,241);
-INSERT INTO Shop (name, price, count) VALUE ("Potate",955,613);
-INSERT INTO Shop (name, price, count) VALUE ("Peas",321,632);
-INSERT INTO Shop (name, price, count) VALUE ("Rice",324,563);" > dataBaseCreater.sql
+INSERT INTO Product (name, price, count) VALUE ("Chery",549,152);
+INSERT INTO Product (name, price, count) VALUE ("Banan",325,753);
+INSERT INTO Product (name, price, count) VALUE ("Orange",436,652);
+INSERT INTO Product (name, price, count) VALUE ("Apple",542,612);
+INSERT INTO Product (name, price, count) VALUE ("Grape",634,241);
+INSERT INTO Product (name, price, count) VALUE ("Potate",955,613);
+INSERT INTO Product (name, price, count) VALUE ("Peas",321,632);
+INSERT INTO Product (name, price, count) VALUE ("Rice",324,563);" > dataBaseCreater.sql
     sudo mysql < dataBaseCreater.sql
     # install node_exporter
     wget https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz
