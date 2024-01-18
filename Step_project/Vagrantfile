@@ -1,0 +1,229 @@
+Vagrant.configure("2") do |config|
+
+  config.vm.define "firstVM" do |firstVM|
+  firstVM.vm.box = "bento/ubuntu-22.04"
+  firstVM.vm.hostname = "firstVM"
+
+  config.vm.network "public_network"
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 2
+  end
+
+  firstVM.vm.provision "shell", inline: <<-SHELL
+    echo start firstVM
+    apt-get update
+    apt install net-tools
+    sudo apt install -y mysql-server
+    sudo systemctl start mysql.service
+    echo -e "
+CREATE DATABASE Shop;
+USE Shop;
+CREATE TABLE Product(id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), price INT, count INT);
+INSERT INTO Shop (name, price, count) VALUE ("Chery",549,152);
+INSERT INTO Shop (name, price, count) VALUE ("Banan",325,753);
+INSERT INTO Shop (name, price, count) VALUE ("Orange",436,652);
+INSERT INTO Shop (name, price, count) VALUE ("Apple",542,612);
+INSERT INTO Shop (name, price, count) VALUE ("Grape",634,241);
+INSERT INTO Shop (name, price, count) VALUE ("Potate",955,613);
+INSERT INTO Shop (name, price, count) VALUE ("Peas",321,632);
+INSERT INTO Shop (name, price, count) VALUE ("Rice",324,563);" > dataBaseCreater.sql
+    sudo mysql < dataBaseCreater.sql
+    # install node_exporter
+    wget https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz
+    tar xvfz node_exporter-*.tar.gz
+    mv node_exporter-1.5.0.linux-amd64/node_exporter /usr/local/bin
+    rm -r node_exporter-1.5.0.linux-amd64*
+    useradd -rs /bin/false node_exporter
+    echo -e "
+[Unit]
+Wants=network-online.target
+Description=Node Exporter
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/node_exporter
+    
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/node_exporter.service
+    sudo systemctl daemon-reload
+    sudo systemctl start node_exporter
+    # install mysql_exporter
+    curl -s https://api.github.com/repos/prometheus/mysqld_exporter/releases/latest   | grep browser_download_url   | grep linux-amd64 | cut -d '"' -f 4   | wget -qi -
+    tar xvf mysqld_exporter*.tar.gz
+    sudo mv mysqld_exporter-*.linux-amd64/mysqld_exporter /usr/local/bin/
+    sudo rm -rf mysqld_exporter-*.linux-amd64
+    sudo chmod +x /usr/local/bin/mysqld_exporter
+    echo -e "
+CREATE USER 'mysqld_exporter'@'localhost' IDENTIFIED BY 'StrongPassword';
+GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'mysqld_exporter'@'localhost';
+FLUSH PRIVILEGES;" > userCreater.sql
+    sudo mysql < userCreater.sql
+    echo -e "
+[client]
+user=mysqld_exporter
+password=StrongPassword" > /etc/.mysqld_exporter.cnf
+    sudo useradd -rs /bin/false mysqld_exporter
+    sudo chown root:mysqld_exporter /etc/.mysqld_exporter.cnf
+    echo -e "
+[Unit]
+Description=Prometheus MySQL Exporter
+After=network.target
+User=mysqld_exporter
+Group=mysqld_exporter
+    
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/mysqld_exporter \
+    --config.my-cnf /etc/.mysqld_exporter.cnf \
+    --collect.global_status \
+    --collect.info_schema.innodb_metrics \
+    --collect.auto_increment.columns \
+    --collect.info_schema.processlist \
+    --collect.binlog_size \
+    --collect.info_schema.tablestats \
+    --collect.global_variables \
+    --collect.info_schema.query_response_time \
+    --collect.info_schema.userstats \
+    --collect.info_schema.tables \
+    --collect.perf_schema.tablelocks \
+    --collect.perf_schema.file_events \
+    --collect.perf_schema.eventswaits \
+    --collect.perf_schema.indexiowaits \
+    --collect.perf_schema.tableiowaits \
+    --collect.slave_status \
+    --web.listen-address=0.0.0.0:9104
+    
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/mysql_exporter.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable mysql_exporter
+    sudo systemctl start mysql_exporter
+  SHELL
+  end
+
+  config.vm.define "grafana" do |grafana|
+  grafana.vm.box = "bento/ubuntu-22.04"
+  grafana.vm.hostname = "grafana"
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 2
+  end
+  grafana.vm.provision "shell", inline: <<-SHELL 
+    echo start grafana
+    apt-get install -y apt-transport-https software-properties-common
+    sudo wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
+    echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+    sudo apt-get update
+    sudo apt-get install -y grafana
+    sudo systemctl daemon-reload
+    sudo systemctl enable grafana-server.service
+    sudo systemctl start grafana-server
+    # install prometheus
+    apt install net-tools
+    wget https://github.com/prometheus/prometheus/releases/download/v2.37.6/prometheus-2.37.6.linux-amd64.tar.gz
+    tar xvfz prometheus-*.tar.gz
+    mkdir /etc/prometheus /var/lib/prometheus
+    cd prometheus-2.37.6.linux-amd64
+    mv prometheus promtool /usr/local/bin/
+    mv prometheus.yml consoles/ console_libraries/ /etc/prometheus/
+    cd ~
+    rm -rf prometheus*
+    useradd -rs /bin/false prometheus
+    chown -R prometheus: /etc/prometheus /var/lib/prometheus
+    echo -e "
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+    
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries \
+    --web.listen-address=0.0.0.0:9090 \
+    --web.enable-lifecycle \
+    --log.level=info
+      
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/prometheus.service
+    # add node_exporter
+    echo -e "
+  - job_name: "node_exporter"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["x.x.x.x:9100"]" >> /etc/prometheus/prometheus.yml
+    # add mysql_exporter
+    echo -e "
+  - job_name: server1_db
+    static_configs:
+      - targets: ['x.x.x.x:9104']
+        labels:
+          alias: db1" >> /etc/prometheus/prometheus.yml
+    systemctl daemon-reload
+    systemctl start prometheus
+    # install alert_manager
+    wget https://github.com/prometheus/alertmanager/releases/download/v0.11.0/alertmanager-0.11.0.linux-amd64.tar.gz
+    tar -xvzf alertmanager-0.11.0.linux-amd64.tar.gz
+    mv alertmanager-0.11.0.linux-amd64/alertmanager /usr/local/bin/
+    rm -rf alertmanager-0.11.0.linux-amd64
+    sudo mkdir /etc/alertmanager/
+    echo -e "
+global:
+  resolve_timeout: 1m
+  
+route:
+  receiver: 'gmail-notifications'
+  
+receivers:
+- name: 'gmail-notifications'
+  email_configs:
+  - to: steamus500@gmail.com
+    from: steamus500@gmail.com
+    smarthost: smtp.gmail.com:587
+    auth_username: steamus500@gmail.com
+    auth_identity: steamus500@gmail.com
+    auth_password: fiml othx jutu qlor 
+    send_resolved: true" > /etc/alertmanager/alertmanager.yml
+    echo -e "
+[Unit]
+Description=AlertManager Server Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+ExecStart=/usr/local/bin/alertmanager --config.file /etc/alertmanager/alertmanager.yml -web.external-url=http://127.0.0.1:9093
+
+[Install]
+WantedBy=multi-user.target" > /etc/systemd/system/alertmanager.service
+    echo -e "
+groups:
+- name: alert.rules
+  rules:
+  - alert: TestAlert
+    expr: disk_usage > 100
+    for: 10s
+    labels:
+      severity: "critical"
+    annotations:
+      summary: "FIRE"
+      description: "Thinkin about it"" > /etc/prometheus/alert.rules.yaml
+  SHELL
+  end
+end
