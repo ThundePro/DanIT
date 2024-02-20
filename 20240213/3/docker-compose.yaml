@@ -1,0 +1,9 @@
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web.html:/usr/share/nginx/html/index.html
+    scale: 3
+    restart: always

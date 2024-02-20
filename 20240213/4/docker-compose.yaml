@@ -1,0 +1,18 @@
+services:
+  ubuntu:
+    image: ubuntu:latest
+    working_dir: /tmp
+    volumes:
+      - ./share/:/tmp/
+    command: bash ./script
+    
+  web:
+    image: nginx:latest
+    depends_on:
+      - ubuntu
+    ports:
+      - "8080:80"
+    working_dir: /tmp
+    volumes:
+      - ./share/ubuntu.html:/usr/share/nginx/html/index.html
+    restart: always
