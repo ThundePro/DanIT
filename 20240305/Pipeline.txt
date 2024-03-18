@@ -1,0 +1,41 @@
+pipeline {
+    agent any
+    stages {
+        stage('Checkout') {
+            steps {
+                sh 'rm -rf *'
+                git branch: 'main',
+                    credentialsId: 'ssh-key',
+                    url: "git@github.com:ThundePro/Pipeline.git"
+            }
+        }
+        stage('Build') {
+            steps {
+                sh """
+                    mkdir -p pipeline
+                    date > pipeline/${BUILD_NUMBER}.txt
+                """
+            }
+        }
+        stage('Publish') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ssh-key', keyFileVariable : 'keyfile')]) {
+                    sh """
+                        export GIT_SSH_COMMAND="ssh -i ${keyfile} -oStrictHostKeyChecking=no"
+                        git config --global user.email steamus500@gmail.com
+                        git config --global user.name ThundePro
+                        git add .
+                        git commit -m "Add new file ${BUILD_NUMBER}.txt"
+                        git tag v0.2.${BUILD_NUMBER}
+                        git push origin v0.2.${BUILD_NUMBER}
+                    """    
+                }
+            }
+        }
+        stage('Post Build') {
+            steps {
+                archiveArtifacts 'pipeline/*'
+            }
+        }
+    }
+}
