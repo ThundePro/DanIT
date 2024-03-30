@@ -1,0 +1,128 @@
+pipeline {
+    agent {label 'agent'}
+    
+    environment {
+        repositoryPath = "step_projects" // Назва директорії для репозиторію
+    }
+    
+    triggers {
+        cron('* * * * *') // Цей cron запустить вашу трубку кожну хвилину
+    }
+    
+    stages {
+        stage('Load Repository') {
+            steps {
+                script {
+                    if (!fileExists(env.repositoryPath)) { // Зверніть увагу на env.repositoryPath
+                        // Завантаження репозиторію з GitLab, якщо він ще не існує
+                        withCredentials([usernamePassword(credentialsId: 'gitlab-token', passwordVariable: 'GITLAB_PASSWORD', usernameVariable: 'GITLAB_USERNAME')]) {
+                            sh "mkdir ${env.repositoryPath}" // Створюємо директорію для репозиторію
+                            sh "cd ${env.repositoryPath} && git clone https://${GITLAB_USERNAME}:${GITLAB_PASSWORD}@gitlab.com/dant1/step_project.git"
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Check Repository Changes') {
+            steps {
+                script {
+                    def output = """
+                        cd step_projects/step_project
+                        git fetch origin
+
+                        localCommit=\$(git rev-parse HEAD)
+                        remoteCommit=\$(git rev-parse @{u})
+
+                        if [ "\$localCommit" = "\$remoteCommit" ]; then
+                            echo "ABORTED"
+                        else
+                            echo "SUCCESS"
+                            git pull >/dev/null
+                        fi
+                    """
+                    currentBuild.result = sh(script: output, returnStdout: true).trim()
+                    if (currentBuild.result == 'SUCCESS') {
+                        echo 'Репозиторій було змінено!'
+                    } else {
+                        echo 'Репозиторій немає оновлень!'
+                    }
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            when {
+                expression {
+                    // Умова для виконання кроку
+                    return currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                script {
+                    // Зміна робочої директорії перед виконанням npm install
+                    dir('step_projects/step_project') {
+                        sh 'npm install'
+                    }
+                }
+            }
+        }
+        
+        stage('Test') {
+            when {
+                expression {
+                    // Умова для виконання кроку
+                    return currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                script {
+                    def testOutput = sh(script: 'cd step_projects/step_project && npm test 2>&1', returnStdout: true).trim()
+                    
+                    if (testOutput.contains('failed')) {
+                        env.TESTRESULT = 'FAILURE'
+                        echo "Tests failed"
+                    } else {
+                        env.TESTRESULT = 'SUCCESS'
+                    }
+                    echo "Output: ${testOutput}"
+                    // echo "TEST: ${env.currentBuild} and ${env.TEST_RESULT}"
+                }
+            }
+        }
+        
+        stage('Create docker image') {
+            when {
+                expression {
+                    // Умова для виконання кроку
+                    return currentBuild.result == 'SUCCESS' && env.TESTRESULT == 'SUCCESS'
+                }
+            }
+            steps {
+                script {
+                    dir('step_projects/step_project') {
+                        sh 'docker build -t $BUILD_NUMBER .'
+                    }
+                }
+            }
+        }
+        
+        stage('Push docker image') {
+            when {
+                expression {
+                    return currentBuild.result == 'SUCCESS' && env.TESTRESULT == 'SUCCESS'
+                }
+            }
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'Docker_Hub', passwordVariable: 'dockerHubPassword', usernameVariable: 'dockerHubUser')]) {
+                        dir('step_projects/step_project') {
+                            sh "docker login -u ${env.dockerHubUser} -p ${env.dockerHubPassword}"
+                            sh "docker tag $BUILD_NUMBER mahzi/$BUILD_NUMBER"
+                            sh "docker push mahzi/$BUILD_NUMBER"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
