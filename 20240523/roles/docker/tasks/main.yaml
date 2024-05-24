@@ -1,0 +1,29 @@
+---
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Starting Docker service
+  service:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+- name: Pull the latest Nginx image
+  docker_image:
+    name: nginx
+    source: pull
+  become: true
+
+- name: Run Nginx container
+  docker_container:
+    name: nginx
+    image: nginx
+    state: started
+    ports:
+      - "80:80"
+  become: true

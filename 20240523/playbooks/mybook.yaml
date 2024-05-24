@@ -1,0 +1,6 @@
+---
+- name: First Playbook
+  hosts: all
+  tasks:
+    - include_role:
+        name: docker
