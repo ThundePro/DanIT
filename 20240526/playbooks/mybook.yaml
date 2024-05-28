@@ -1,0 +1,16 @@
+---
+- name: First Playbook
+  hosts: all
+  # vars_files:
+  #   - terraform_output.json
+  #  tasks:
+  #   - name: Set Nginx variables
+  #     set_fact:
+  #       nginx_port: "{{ nginx_port.value }}"
+  #       nginx_body: "{{ nginx_body.value }}"
+  # vars:
+  #   nginx_port: "{{ nginx_port.value }}"
+  #   nginx_body: "{{ nginx_body.value }}"
+  tasks:
+    - include_role:
+        name: docker

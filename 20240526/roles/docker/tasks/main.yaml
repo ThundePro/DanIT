@@ -1,0 +1,52 @@
+---
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Starting Docker service
+  service:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+- name: Create directory for custom HTML
+  file:
+    path: /tmp/nginx/html
+    state: directory
+
+- name: Copy custom index.html to the temporary directory
+  template:
+    src: index.html.j2
+    dest: /tmp/nginx/html/index.html
+  notify: Restart Nginx container
+
+- name: Copy docker-compose.yaml to the temporary directory
+  template:
+    src: docker-compose.yaml.j2
+    dest: /tmp/nginx/docker-compose.yaml
+  notify: Restart Nginx container
+
+- name: Start Nginx using docker-compose
+  command: docker-compose -f /tmp/nginx/docker-compose.yaml up -d
+  become: true
+
+
+
+# - name: Pull the latest Nginx image
+#   docker_image:
+#     name: nginx
+#     source: pull
+#   become: true
+
+# - name: Run Nginx container
+#   docker_container:
+#     name: nginx
+#     image: nginx
+#     state: started
+#     ports:
+#       - "80:80"
+#   become: true
