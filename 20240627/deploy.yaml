@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  namespace: volodymyr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: mahzi/private:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: nginx-config-volume
+          mountPath: /etc/nginx/templates/default.conf.template
+          subPath: default.conf.template
+      imagePullSecrets:
+      - name: registry-auth
+      volumes:
+      - name: nginx-config-volume
+        configMap:
+          name: nginx-config
